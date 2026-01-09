@@ -16,8 +16,16 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
+    int status = 0;
+    status = system(cmd);
 
-    return true;
+    // process exited and status ok
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
+    {
+        return true;
+    }
+
+    return false;
 }
 
 /**
@@ -45,9 +53,6 @@ bool do_exec(int count, ...)
         command[i] = va_arg(args, char *);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
 
 /*
  * TODO:
@@ -61,7 +66,43 @@ bool do_exec(int count, ...)
 
     va_end(args);
 
-    return true;
+    if (!command[0] || command[0][0] != '/') 
+    {
+        return false;
+    }
+
+    pid_t pid = fork(); 
+    
+    if (pid == -1)
+    {
+        perror("fork failed.");
+        return false;
+    } 
+    else if (pid == 0)
+    {
+        execv(command[0], command);
+
+        perror("execv failed.");
+        return false;
+    } 
+    else 
+    {
+        int status;
+        
+        if (waitpid(pid, &status, 0) == -1) 
+        {
+            perror("waitpid failed.");
+            return false;
+        }
+
+        // process exited and status ok
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) 
+        {
+            return true;
+        } 
+
+        return false;
+    }
 }
 
 /**
@@ -80,10 +121,6 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
         command[i] = va_arg(args, char *);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
-
 
 /*
  * TODO
@@ -95,5 +132,60 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 
     va_end(args);
 
-    return true;
+    if (!command[0] || command[0][0] != '/') 
+    {
+        return false;
+    }
+
+    int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+
+    if (fd < 0) 
+    { 
+        perror("open failed."); 
+        return false; 
+    }
+
+    pid_t pid = fork(); 
+    
+    if (pid == -1)
+    {
+        close(fd);
+
+        perror("fork failed.");
+        return false;
+    } 
+    else if (pid == 0)
+    {
+        if (dup2(fd, STDOUT_FILENO) < 0) 
+        { 
+            perror("dup2 failed."); 
+            return false; 
+        }
+        close(fd);
+
+        execv(command[0], command);
+
+        perror("execv failed.");
+        return false;
+    } 
+    else 
+    {
+        int status;
+        
+        close(fd);
+
+        if (waitpid(pid, &status, 0) == -1) 
+        {
+            perror("waitpid failed.");
+            return false;
+        }
+
+        // process exited and status ok
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) 
+        {
+            return true;
+        } 
+
+        return false;
+    }
 }
